@@ -5,7 +5,7 @@ webdriver-manager
 pandas
 numpy
 tqdm
-Pillow~=9.5
+Pillow
 pathlib
 fvcore
 pycocotools
@@ -15,12 +15,12 @@ gspread
 oauth2client
 editdistance
 lxml
-cryptography==38.0.4
-httpcore==0.15.0
+cryptography
+httpcore
 h11
 h2
 hyperframe
-pyopenssl==22.0.0
-selenium==4.0.0
+pyopenssl
+selenium
 selenium-wire
 
