@@ -1,11 +1,12 @@
 # Global configuration
+import torch
 import phishintention
 from phishintention.src.OCR_aided_siamese import *
 from phishintention.src.AWL_detector import *
 from phishintention.src.crp_classifier import *
-from phishintention.src.util.chrome import *
+#from src.util.chrome import *
 from phishintention.src.crp_locator import *
-import helium
+#import helium
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from webdriver_manager.chrome import ChromeDriverManager
 from typing import Union
@@ -34,8 +35,8 @@ def driver_loader():
     return driver
 
 
-
-def load_config(cfg_path: Union[str, None] = None, reload_targetlist=False, device='cuda'):
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+def load_config(cfg_path: Union[str, None] = None, reload_targetlist=False, device=DEVICE):
 
     #################### '''Default''' ####################
     if cfg_path is None:
