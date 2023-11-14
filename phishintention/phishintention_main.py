@@ -44,95 +44,94 @@ def test(url, screenshot_path, AWL_MODEL, CRP_CLASSIFIER, CRP_LOCATOR_MODEL, SIA
     process_time = 0
 
 
-    while True:
-        # 0 for benign, 1 for phish, default is benign
-        phish_category = 0
-        pred_target = None
-        siamese_conf = None
-        print("Entering phishintention")
+    #while True:
+    # 0 for benign, 1 for phish, default is benign
+    phish_category = 0
+    pred_target = None
+    siamese_conf = None
+    print("Entering phishintention")
+    ####################### Step1: layout detector ##############################################
+    start_time = time.time()
+    pred_classes, pred_boxes, pred_scores = element_recognition(img=screenshot_path, model=AWL_MODEL)
+    ele_detector_time = time.time() - start_time
+    plotvis = vis(screenshot_path, pred_boxes, pred_classes)
+    print("plot")
 
-        ####################### Step1: layout detector ##############################################
-        start_time = time.time()
-        pred_classes, pred_boxes, pred_scores = element_recognition(img=screenshot_path, model=AWL_MODEL)
-        ele_detector_time = time.time() - start_time
-        plotvis = vis(screenshot_path, pred_boxes, pred_classes)
-        print("plot")
-
-        # If no element is reported
-        if pred_boxes is None or len(pred_boxes) == 0:
-            print('No element is detected, report as benign')
-            return phish_category, pred_target, plotvis, siamese_conf, dynamic, str(ele_detector_time)+'|'+str(siamese_time)+'|'+str(crp_time)+'|'+str(dynamic_time)+'|'+str(process_time), pred_boxes, pred_classes
-        print('Entering siamese')
-
-        # domain already in targetlist
-        query_domain = tldextract.extract(url).domain
-        with open(DOMAIN_MAP_PATH, 'rb') as handle:
-            domain_map = pickle.load(handle)
-        existing_brands = domain_map.keys()
-        existing_domains = [y for x in list(domain_map.values()) for y in x]
-        if query_domain in existing_brands or query_domain in existing_domains:
-            return phish_category, pred_target, plotvis, siamese_conf, dynamic, str(ele_detector_time)+'|'+str(siamese_time)+'|'+str(crp_time)+'|'+str(dynamic_time)+'|'+str(process_time), pred_boxes, pred_classes
-
-        ######################## Step2: Siamese (logo matcher) ########################################
-        start_time = time.time()
-        pred_target, matched_coord, siamese_conf = phishpedia_classifier_OCR(pred_classes=pred_classes, pred_boxes=pred_boxes, 
+    # If no element is reported
+    if pred_boxes is None or len(pred_boxes) == 0:
+      print('No element is detected, report as benign')
+      return phish_category, pred_target, plotvis, siamese_conf, dynamic, str(ele_detector_time)+'|'+str(siamese_time)+'|'+str(crp_time)+'|'+str(dynamic_time)+'|'+str(process_time), pred_boxes, pred_classes
+    print('Entering siamese')
+    
+    # domain already in targetlist
+    query_domain = tldextract.extract(url).domain
+    with open(DOMAIN_MAP_PATH, 'rb') as handle:
+      domain_map = pickle.load(handle)
+    existing_brands = domain_map.keys()
+    existing_domains = [y for x in list(domain_map.values()) for y in x]
+    if query_domain in existing_brands or query_domain in existing_domains:
+      return phish_category, pred_target, plotvis, siamese_conf, dynamic, str(ele_detector_time)+'|'+str(siamese_time)+'|'+str(crp_time)+'|'+str(dynamic_time)+'|'+str(process_time), pred_boxes, pred_classes
+      
+    ######################## Step2: Siamese (logo matcher) ########################################
+    start_time = time.time()
+    pred_target, matched_coord, siamese_conf = phishpedia_classifier_OCR(pred_classes=pred_classes, pred_boxes=pred_boxes, 
                                         domain_map_path=DOMAIN_MAP_PATH, model=SIAMESE_MODEL,
                                         ocr_model = OCR_MODEL,
                                         logo_feat_list=LOGO_FEATS, file_name_list=LOGO_FILES,
                                         url=url, shot_path=screenshot_path,
                                         ts=SIAMESE_THRE)
-        siamese_time = time.time() - start_time
+    siamese_time = time.time() - start_time
 
-        if pred_target is None:
-            print('Did not match to any brand, report as benign')
-            return phish_category, pred_target, plotvis, siamese_conf, dynamic, \
+    if pred_target is None:
+      print('Did not match to any brand, report as benign')
+      return phish_category, pred_target, plotvis, siamese_conf, dynamic, \
                    str(ele_detector_time)+'|'+str(siamese_time)+'|'+str(crp_time)+'|'+str(dynamic_time)+'|'+str(process_time),\
                    pred_boxes, pred_classes
 
-        ######################## Step3: CRP checker (if a target is reported) #################################
-        print('A target is reported by siamese, enter CRP classifier')
-        if waive_crp_classifier: # only run dynamic analysis ONCE
-            break
+    ######################## Step3: CRP checker (if a target is reported) #################################
+    print('A target is reported by siamese, enter CRP classifier')
+    #if waive_crp_classifier: # only run dynamic analysis ONCE
+    #  break
             
-        if pred_target is not None:
-            # CRP HTML heuristic
-            html_path = screenshot_path.replace("shot.png", "html.txt")
-            start_time = time.time()
-            cre_pred = html_heuristic(html_path)
-            if cre_pred == 1: # if HTML heuristic report as nonCRP
-                # CRP classifier
-                cre_pred, cred_conf, _  = credential_classifier_mixed_al(img=screenshot_path, coords=pred_boxes,
-                                                                         types=pred_classes, model=CRP_CLASSIFIER)
-            crp_time = time.time() - start_time
+    if pred_target is not None:
+      # CRP HTML heuristic
+      html_path = screenshot_path.replace("shot.png", "html.txt")
+      start_time = time.time()
+      cre_pred = html_heuristic(html_path)
+      if cre_pred == 1: # if HTML heuristic report as nonCRP
+        # CRP classifier
+        cre_pred, cred_conf, _  = credential_classifier_mixed_al(img=screenshot_path, coords=pred_boxes,
+                                                                   types=pred_classes, model=CRP_CLASSIFIER)
+      crp_time = time.time() - start_time
 #
-#           ######################## Step4: Dynamic analysis #################################
-            if cre_pred == 1:
-                print('It is a Non-CRP page, enter dynamic analysis')
-                # update url and screenshot path
-                # # load driver ONCE!
-                driver = driver_loader()
-                print('Finish loading webdriver')
-                # load chromedriver
-                start_time = time.time()
-                url, screenshot_path, successful, process_time = dynamic_analysis(url=url, screenshot_path=screenshot_path,
-                                                                    cls_model=CRP_CLASSIFIER, ele_model=AWL_MODEL, login_model=CRP_LOCATOR_MODEL,
-                                                                    driver=driver)
-                dynamic_time = time.time() - start_time
-                driver.quit()
-
-                waive_crp_classifier = True # only run dynamic analysis ONCE
-
-                # If dynamic analysis did not reach a CRP
-                if successful == False:
-                    print('Dynamic analysis cannot find any link redirected to a CRP page, report as benign')
-                    return phish_category, None, plotvis, None, dynamic, str(ele_detector_time)+'|'+str(siamese_time)+'|'+str(crp_time)+'|'+str(dynamic_time)+'|'+str(process_time), pred_boxes, pred_classes
-                else: # dynamic analysis successfully found a CRP
-                    dynamic = True
-                    print('Dynamic analysis found a CRP, go back to layout detector')
-
-            else: # already a CRP page
-                print('Already a CRP, continue')
-                break
+#   ######################## Step4: Dynamic analysis #################################
+    if cre_pred == 1:
+      print('It is a Non-CRP page,')
+    #            # update url and screenshot path
+    #            # # load driver ONCE!
+    #            driver = driver_loader()
+    #            print('Finish loading webdriver')
+    #            # load chromedriver
+    #            start_time = time.time()
+    #            url, screenshot_path, successful, process_time = dynamic_analysis(url=url, screenshot_path=screenshot_path,
+    #                                                                cls_model=CRP_CLASSIFIER, ele_model=AWL_MODEL, login_model=CRP_LOCATOR_MODEL,
+    #                                                                driver=driver)
+    #            dynamic_time = time.time() - start_time
+    #            driver.quit()
+#
+    #            waive_crp_classifier = True # only run dynamic analysis ONCE
+#
+    #            # If dynamic analysis did not reach a CRP
+    #            if successful == False:
+    #                print('Dynamic analysis cannot find any link redirected to a CRP page, report as benign')
+    #                return phish_category, None, plotvis, None, dynamic, str(ele_detector_time)+'|'+str(siamese_time)+'|'+str(crp_time)+'|'+str(dynamic_time)+'|'+str(process_time), pred_boxes, pred_classes
+    #            else: # dynamic analysis successfully found a CRP
+    #                dynamic = True
+    #                print('Dynamic analysis found a CRP, go back to layout detector')
+#
+    #        else: # already a CRP page
+    #            print('Already a CRP, continue')
+    #            break
 #
     ######################## Step5: Return #################################
     if pred_target is not None:
@@ -194,20 +193,20 @@ def runit(folder, results, AWL_MODEL, CRP_CLASSIFIER, CRP_LOCATOR_MODEL, SIAMESE
         end_time = time.time()
 
         # FIXME: call VTScan only when phishintention report it as positive
-        vt_result = "None"
-        if phish_target is not None:
-            try:
-                if vt_scan(url) is not None:
-                    positive, total = vt_scan(url)
-                    print("Positive VT scan!")
-                    vt_result = str(positive) + "/" + str(total)
-                else:
-                    print("Negative VT scan!")
-                    vt_result = "None"
-
-            except Exception as e:
-                print('VTScan is not working...')
-                vt_result = "error"
+        #vt_result = "None"
+        #if phish_target is not None:
+        #    try:
+        #        if vt_scan(url) is not None:
+        #            positive, total = vt_scan(url)
+        #            print("Positive VT scan!")
+        #            vt_result = str(positive) + "/" + str(total)
+        #        else:
+        #            print("Negative VT scan!")
+        #            vt_result = "None"
+#
+        #    except Exception as e:
+        #        print('VTScan is not working...')
+        #        vt_result = "error"
 
         # write results as well as predicted image
         try:
